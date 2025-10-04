@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi import Response
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 from app.schemas.auth import RegisterIn, LoginIn, Token
 from app.db import models
 from app.db.session import get_db
@@ -10,23 +11,43 @@ from app.core.security import ALGORITHM, SECRET_KEY, get_current_user
 from app.schemas.auth import RefreshTokenIn
 from jose import JWTError, jwt  # Add this import for JWT handling
 from datetime import timedelta
+import logging
+
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+logger = logging.getLogger(__name__)
 
 @router.post("/register", response_model=dict, status_code=status.HTTP_201_CREATED)
 def register(payload: RegisterIn, db: Session = Depends(get_db)):
-    # check existing email
-    existing = db.query(models.User).filter(models.User.email == payload.email).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="email already registered")
-    hashed = security.hash_password(payload.password)
-    user = models.User(name=payload.name, email=payload.email, password_hash=hashed, role="user")
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return {"id": str(user.id), "email": user.email, "name": user.name}
+    try:
+        # check existing email
+        existing = db.query(models.User).filter(models.User.email == payload.email).first()
+        if existing:
+            raise HTTPException(status_code=400, detail="Email already registered")
+
+        hashed = security.hash_password(payload.password)
+        user = models.User(
+            name=payload.name,
+            email=payload.email,
+            password_hash=hashed,
+            role="user"
+        )
+        
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+        return {"id": str(user.id), "email": user.email, "name": user.name}
+    except IntegrityError:
+        db.rollback()
+        logger.error(f"Registration failed: {e}")
+        raise HTTPException(status_code=400, detail="Database integrity error")
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Registration failed: {e}")
+        raise HTTPException(status_code=500, detail="Unexpected server error. Please try again later.")
+        
 
 @router.post("/login", response_model=Token)
 def login(payload: LoginIn, db: Session = Depends(get_db)):

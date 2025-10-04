@@ -1,6 +1,8 @@
+import uuid
 from sqlalchemy.orm import Session
 from app.db.models import Service
 from typing import Optional
+from decimal import Decimal as numeric
 
 class ServiceRepository:
     def __init__(self, db: Session):
@@ -12,10 +14,10 @@ class ServiceRepository:
         self.db.refresh(service)
         return service
 
-    def get_by_id(self, service_id: str) -> Service | None:
+    def get_by_id(self, service_id: uuid.UUID) -> Service | None:
         return self.db.query(Service).filter(Service.id == service_id).first()
 
-    def list(self, q: Optional[str] = None, price_min: float = 0, price_max: float = float("inf"), active: Optional[bool] = None):
+    def list(self, q: Optional[str] = None, price_min: numeric = 0, price_max: numeric = float("inf"), active: Optional[bool] = None):
         query = self.db.query(Service)
         if q:
             query = query.filter(Service.name.ilike(f"%{q}%"))

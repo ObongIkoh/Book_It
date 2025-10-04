@@ -8,6 +8,14 @@ class RegisterIn(BaseModel):
 class LoginIn(BaseModel):
     email: EmailStr
     password: str
+    
+class UserOut(BaseModel):
+    id: int
+    name: str
+    email: EmailStr
+
+    class Config:
+        from_attributes = True  # for SQLAlchemy models
 
 class Token(BaseModel):
     access_token: str

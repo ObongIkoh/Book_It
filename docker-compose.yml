@@ -1,0 +1,69 @@
+
+services:
+  db:
+    image: postgres:16-alpine   # ✅ Match your installed Postgres version
+    container_name: bookit-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-bookit}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bookit}
+      POSTGRES_DB: ${POSTGRES_DB:-bookit}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Optional: run initial migrations or schema setup
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bookit}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - bookit-network
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: bookit-api
+    env_file: .env.docker
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-bookit}:${POSTGRES_PASSWORD:-bookit}@db:5432/${POSTGRES_DB:-bookit}
+      SECRET_KEY: ${SECRET_KEY:-supersecret}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-7}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+    volumes:
+      - ./:/app  # ✅ Good for development; remove in production
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - bookit-network
+    restart: unless-stopped
+
+  # Optional: Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    container_name: bookit-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro  # SSL certificates
+    depends_on:
+      - web
+    networks:
+      - bookit-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  bookit-network:
+    driver: bridge
